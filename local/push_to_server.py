@@ -25,7 +25,7 @@ def copy_folder(src, dst):
 
 def push_model():
 
-    with open("model_cache/metadata.json") as file:
+    with open("./model_cache/model_metadata.json") as file:
         file_data = json.load(file)
         time_stamp = file_data["timestamp"]
         copy_folder(
