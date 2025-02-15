@@ -34,38 +34,51 @@ def load_experiment_metadata():
 
 def create_zip_from_folder(folder_path):
     """Create a zip file containing model files"""
+    folder_path = Path(folder_path)
+    output_path = folder_path / f"{folder_path.name}.zip"
+
+    try:
+        with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            files_to_include = [
+                "model_metadata.json",
+                "parameters.h5",
+                "train.py",
+            ]
+
+            for filename in files_to_include:
+                file_path = folder_path / filename
+                if file_path.exists():
+                    # Add file to zip with its relative path
+                    zf.write(file_path, filename)
+
+        # Read the created zip file
+        with open(output_path, "rb") as f:
+            return f.read()
+
+    finally:
+        # Clean up the zip file
+        if output_path.exists():
+            output_path.unlink()
+
+
+def get_model_files(folder_path):
+    """Get model files for download"""
+    folder_path = Path(folder_path)
+    files_to_include = ["model_metadata.json", "parameters.h5", "train.py"]
+
+    # Create a zip file in memory
     zip_buffer = io.BytesIO()
 
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        # List of files we want to include
-        files_to_include = ["model_metadata.json", "parameters.h5", "train.py"]
-
-        # Add each file if it exists
         for filename in files_to_include:
-            file_path = Path(folder_path) / filename
+            file_path = folder_path / filename
             if file_path.exists():
+                # Read file in binary mode
                 with open(file_path, "rb") as f:
                     zip_file.writestr(filename, f.read())
 
     zip_buffer.seek(0)
-    return zip_buffer.getvalue()
-
-
-def get_model_files(folder_path):
-    """Get list of files from model folder"""
-    files = []
-    folder_path = Path(folder_path)
-
-    # List of files we want to include
-    files_to_include = ["model_metadata.json", "parameters.h5", "train.py"]
-
-    for filename in files_to_include:
-        file_path = folder_path / filename
-        if file_path.exists():
-            with open(file_path, "rb") as f:
-                files.append((filename, f.read()))
-
-    return files
+    return zip_buffer.read()
 
 
 def get_historical_performance(experiments):
@@ -202,17 +215,18 @@ def main():
             st.write("**Performance:**")
             st.write(f"- Accuracy: {exp['accuracy']:.3f}")
 
-            # Add single folder download
             exp_path = Path(exp["path"])
             if exp_path.exists():
-                zip_data = create_zip_from_folder(exp_path)
-                st.download_button(
-                    label="💾 Save Model Folder",
-                    data=zip_data,
-                    file_name=f"{exp['name']}_files.zip",
-                    mime="application/zip",
-                    key=f"download_{exp['name']}",
-                )
+                try:
+                    model_data = get_model_files(exp_path)
+                    st.download_button(
+                        label="📥 Download Model Files",
+                        data=model_data,
+                        file_name=f"{exp['name']}.zip",
+                        mime="application/x-zip-compressed",
+                    )
+                except Exception as e:
+                    st.error(f"Error preparing files: {str(e)}")
 
         with col2:
             st.write("**Current Hyperparameters:**")
@@ -231,14 +245,22 @@ def main():
                     # Display suggested parameters
                     st.json(suggested_params)
 
-                    # Add download button for JSON
-                    json_str = json.dumps(suggested_params, indent=2)
-                    st.download_button(
-                        label="💾 Save Suggested Hyperparameters",
-                        data=json_str,
-                        file_name="suggested_hyperparameters.json",
-                        mime="application/json",
-                    )
+                    # Save to temporary file
+                    temp_file = Path("/tmp/suggested_hyperparameters.json")
+                    with open(temp_file, "w") as f:
+                        json.dump(suggested_params, f, indent=2)
+
+                    # Read file for download
+                    with open(temp_file, "rb") as f:
+                        st.download_button(
+                            label="💾 Save Suggested Hyperparameters",
+                            data=f.read(),
+                            file_name="suggested_hyperparameters.json",
+                            mime="application/json",
+                        )
+
+                    # Clean up
+                    temp_file.unlink()
         except Exception as e:
             st.error(f"Error generating AI suggestions: {str(e)}")
 
