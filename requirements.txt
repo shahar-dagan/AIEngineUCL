@@ -4,3 +4,10 @@ streamlit
 pydantic
 gitpython
 openai
+
+# For experiments
+tensorflow
+keras
+numpy
+matplotlib
+pandas
