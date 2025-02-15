@@ -1,172 +1,132 @@
-# streamlit_app.py
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
-from experiment_manager import ExperimentManager
-from pydantic import BaseModel
-from typing import Optional
-import git
+from pathlib import Path
+import json
 from datetime import datetime
-import pytz
+
+# Constants
+MODEL_CACHE_DIR = Path("models")  # Directory where models are saved
 
 
-# Create a single instance of ExperimentManager
-@st.cache_resource
-def get_experiment_manager():
-    return ExperimentManager()
+def load_experiment_metadata():
+    """Load metadata from all experiments in the model cache"""
+    experiments = []
+
+    # Check if directory exists
+    if not MODEL_CACHE_DIR.exists():
+        st.error(f"Directory not found: {MODEL_CACHE_DIR}")
+        return experiments
+
+    # Iterate through all model directories
+    for model_dir in MODEL_CACHE_DIR.glob("model_*"):
+        if model_dir.is_dir():
+            metadata_file = model_dir / "model_metadata.json"
+            if metadata_file.exists():
+                try:
+                    with open(metadata_file, "r") as f:
+                        metadata = json.load(f)
+                        metadata["path"] = str(model_dir)
+                        metadata["name"] = model_dir.name
+                        experiments.append(metadata)
+                except Exception as e:
+                    st.error(f"Error loading {metadata_file}: {str(e)}")
+
+    return experiments
 
 
-class Experiment(BaseModel):
-    name: str
-    hyperparams: dict
-    metrics: dict
-    notes: Optional[str] = None
+def create_timeline(experiments):
+    """Create interactive timeline visualization"""
+    df = pd.DataFrame(
+        [
+            {
+                "timestamp": exp["timestamp"],
+                "name": exp["name"],
+                "accuracy": exp["test_data"]["test_accuracy"],
+                "loss": exp["train_data"]["train_loss"][-1],
+                "hyperparameters": exp["hyperparameters"],
+                "path": exp["path"],
+            }
+            for exp in experiments
+        ]
+    )
 
+    # Convert timestamp to datetime
+    df["timestamp"] = pd.to_datetime(df["timestamp"], format="%Y%m%d-%H%M%S")
 
-def get_commit_history():
-    """Get Git commit history for experiments"""
-    exp_manager = get_experiment_manager()
-    repo = exp_manager.repo
-
-    commits = []
-    for commit in repo.iter_commits():
-        # Only include commits that modified files in the experiments directory
-        if any(
-            "experiments/" in item.a_path
-            for item in commit.diff(
-                commit.parents[0] if commit.parents else git.NULL_TREE
-            )
-        ):
-            commits.append(
-                {
-                    "hash": commit.hexsha,
-                    "message": commit.message.strip(),
-                    "author": commit.author.name,
-                    "date": datetime.fromtimestamp(
-                        commit.committed_date, tz=pytz.UTC
-                    ),
-                    "files_changed": [
-                        item.a_path
-                        for item in commit.diff(
-                            commit.parents[0]
-                            if commit.parents
-                            else git.NULL_TREE
-                        )
-                    ],
-                }
-            )
-    return commits
-
-
-def create_interactive_timeline(commits):
-    """Create an interactive timeline visualization"""
-    # Create DataFrame for timeline
-    df = pd.DataFrame(commits)
-
-    # Create the timeline figure
+    # Create figure
     fig = go.Figure()
 
-    # Add dots for each commit
+    # Add points for each experiment
     fig.add_trace(
         go.Scatter(
-            x=df["date"],
-            y=[0] * len(df),
-            mode="markers+text",
-            name="Commits",
-            text=df["message"],
-            textposition="top center",
+            x=df["timestamp"],
+            y=[0] * len(df),  # All points on same horizontal line
+            mode="markers",
+            marker=dict(size=15),
+            name="Experiments",
             hovertemplate=(
-                "<b>Date:</b> %{x}<br>"
-                "<b>Message:</b> %{text}<br>"
-                "<b>Author:</b> %{customdata[0]}<br>"
-                "<b>Hash:</b> %{customdata[1]}"
+                "<b>Experiment:</b> %{customdata[0]}<br>"
+                "<b>Time:</b> %{x}<br>"
+                "<b>Accuracy:</b> %{customdata[1]:.3f}<br>"
+                "<b>Loss:</b> %{customdata[2]:.3f}<br>"
+                "<b>Learning Rate:</b> %{customdata[3]}<br>"
+                "<b>Batch Size:</b> %{customdata[4]}<br>"
+                "<b>Conv Filters:</b> %{customdata[5]}"
             ),
             customdata=list(
-                zip(df["author"], df["hash"].apply(lambda x: x[:8]))
+                zip(
+                    df["name"],
+                    df["accuracy"],
+                    df["loss"],
+                    df["hyperparameters"].apply(lambda x: x["learning_rate"]),
+                    df["hyperparameters"].apply(lambda x: x["batch_size"]),
+                    df["hyperparameters"].apply(lambda x: x["conv_filters"]),
+                )
             ),
-            marker=dict(size=15, symbol="circle", color="blue"),
         )
     )
 
     # Update layout
     fig.update_layout(
-        title="Experiment Timeline",
+        title="Model Training Timeline",
         showlegend=False,
-        yaxis=dict(visible=False),
-        xaxis=dict(title="Date"),
-        height=300,
+        yaxis=dict(
+            showticklabels=False, showgrid=False, zeroline=False
+        ),  # Hide y-axis
+        xaxis_title="Time",
         hovermode="closest",
+        height=200,  # Reduced height since we only need one line
     )
 
     return fig, df
 
 
 def main():
-    st.title("Git-Based Experiment Dashboard")
+    st.title("Model Training Timeline")
 
-    # Get ExperimentManager instance
-    exp_manager = get_experiment_manager()
+    # Load experiments
+    experiments = load_experiment_metadata()
 
-    # Get commit history
-    commits = get_commit_history()
+    if not experiments:
+        st.warning("No experiments found.")
+        return
 
-    # Create interactive timeline
-    fig, commits_df = create_interactive_timeline(commits)
-
-    # Display the timeline
+    # Create and display timeline
+    fig, df = create_timeline(experiments)
     st.plotly_chart(fig, use_container_width=True)
 
-    # Show selected commit details
-    if len(commits) > 0:
-        st.write("### Commit Details")
-
-        # Get selected date from timeline click or use latest commit
-        selected_point = st.session_state.get("selected_point", None)
-        if selected_point is not None:
-            selected_commit = commits_df.iloc[selected_point]
-        else:
-            selected_commit = commits_df.iloc[0]
-
-        # Display commit info
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.write(
-                f"**Date:** {selected_commit['date'].strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-            st.write(f"**Message:** {selected_commit['message']}")
-            st.write(f"**Author:** {selected_commit['author']}")
-            st.write(f"**Commit:** {selected_commit['hash'][:8]}")
-            st.write("**Files Changed:**")
-            for file in selected_commit["files_changed"]:
-                if file.startswith("experiments/"):
-                    st.write(f"- {file}")
-
-        with col2:
-            if st.button(
-                f"Load Experiments at {selected_commit['hash'][:8]}",
-                key=selected_commit["hash"],
-            ):
-                try:
-                    # Checkout this commit temporarily
-                    current = exp_manager.repo.head.commit
-                    exp_manager.repo.git.checkout(selected_commit["hash"])
-
-                    # Load experiments from this commit
-                    experiments = exp_manager.load_all_experiments()
-
-                    # Store in session state
-                    st.session_state["experiments"] = experiments
-                    st.session_state["viewing_commit"] = selected_commit["hash"]
-
-                    # Return to current commit
-                    exp_manager.repo.git.checkout(current)
-
-                    st.success(
-                        f"Loaded experiments from commit {selected_commit['hash'][:8]}"
-                    )
-                except Exception as e:
-                    st.error(f"Error loading experiments: {str(e)}")
+    # When a point is clicked, show detailed information
+    selected_point = st.session_state.get("selected_point", None)
+    if selected_point is not None:
+        exp = df.iloc[selected_point]
+        st.write("### Experiment Details")
+        st.write(f"**Time:** {exp['timestamp']}")
+        st.write(f"**Accuracy:** {exp['accuracy']:.3f}")
+        st.write(f"**Loss:** {exp['loss']:.3f}")
+        st.write("**Hyperparameters:**")
+        for key, value in exp["hyperparameters"].items():
+            st.write(f"- {key}: {value}")
 
 
 if __name__ == "__main__":
