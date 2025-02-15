@@ -32,14 +32,39 @@ def load_experiment_metadata():
 
 
 def create_zip_from_folder(folder_path):
+    """Create a zip file containing model files"""
     zip_buffer = io.BytesIO()
+
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for fpath in Path(folder_path).rglob("*"):
-            if fpath.is_file():
-                relative_path = fpath.relative_to(folder_path)
-                zip_file.write(fpath, relative_path)
+        # List of files we want to include
+        files_to_include = ["model_metadata.json", "parameters.h5", "train.py"]
+
+        # Add each file if it exists
+        for filename in files_to_include:
+            file_path = Path(folder_path) / filename
+            if file_path.exists():
+                with open(file_path, "rb") as f:
+                    zip_file.writestr(filename, f.read())
+
     zip_buffer.seek(0)
-    return zip_buffer
+    return zip_buffer.getvalue()
+
+
+def get_model_files(folder_path):
+    """Get list of files from model folder"""
+    files = []
+    folder_path = Path(folder_path)
+
+    # List of files we want to include
+    files_to_include = ["model_metadata.json", "parameters.h5", "train.py"]
+
+    for filename in files_to_include:
+        file_path = folder_path / filename
+        if file_path.exists():
+            with open(file_path, "rb") as f:
+                files.append((filename, f.read()))
+
+    return files
 
 
 def main():
@@ -119,15 +144,16 @@ def main():
             st.write("**Performance:**")
             st.write(f"- Accuracy: {exp['accuracy']:.3f}")
 
-            # Add download button
+            # Add single folder download
             exp_path = Path(exp["path"])
             if exp_path.exists():
-                zip_buffer = create_zip_from_folder(exp_path)
+                zip_data = create_zip_from_folder(exp_path)
                 st.download_button(
-                    label="📥 Download Model Files",
-                    data=zip_buffer,
-                    file_name=f"{exp['name']}.zip",
+                    label="💾 Save Model Folder",
+                    data=zip_data,
+                    file_name=f"{exp['name']}_files.zip",
                     mime="application/zip",
+                    key=f"download_{exp['name']}",
                 )
 
         with col2:
