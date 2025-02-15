@@ -1,172 +1,165 @@
-# streamlit_app.py
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
-from experiment_manager import ExperimentManager
-from pydantic import BaseModel
-from typing import Optional
-import git
-from datetime import datetime
-import pytz
+from pathlib import Path
+import json
+import zipfile
+import io
+
+# Constants
+MODEL_CACHE_DIR = Path("models")
 
 
-# Create a single instance of ExperimentManager
-@st.cache_resource
-def get_experiment_manager():
-    return ExperimentManager()
+def load_experiment_metadata():
+    experiments = []
+    if not MODEL_CACHE_DIR.exists():
+        st.error(f"Directory not found: {MODEL_CACHE_DIR}")
+        return experiments
+
+    for model_dir in MODEL_CACHE_DIR.glob("model_*"):
+        if model_dir.is_dir():
+            metadata_file = model_dir / "model_metadata.json"
+            if metadata_file.exists():
+                try:
+                    with open(metadata_file, "r") as f:
+                        metadata = json.load(f)
+                        metadata["path"] = str(model_dir)
+                        metadata["name"] = model_dir.name
+                        experiments.append(metadata)
+                except Exception as e:
+                    st.error(f"Error loading {metadata_file}: {str(e)}")
+    return experiments
 
 
-class Experiment(BaseModel):
-    name: str
-    hyperparams: dict
-    metrics: dict
-    notes: Optional[str] = None
+def create_zip_from_folder(folder_path):
+    """Create a zip file containing model files"""
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        # List of files we want to include
+        files_to_include = ["model_metadata.json", "parameters.h5", "train.py"]
+
+        # Add each file if it exists
+        for filename in files_to_include:
+            file_path = Path(folder_path) / filename
+            if file_path.exists():
+                with open(file_path, "rb") as f:
+                    zip_file.writestr(filename, f.read())
+
+    zip_buffer.seek(0)
+    return zip_buffer.getvalue()
 
 
-def get_commit_history():
-    """Get Git commit history for experiments"""
-    exp_manager = get_experiment_manager()
-    repo = exp_manager.repo
+def get_model_files(folder_path):
+    """Get list of files from model folder"""
+    files = []
+    folder_path = Path(folder_path)
 
-    commits = []
-    for commit in repo.iter_commits():
-        # Only include commits that modified files in the experiments directory
-        if any(
-            "experiments/" in item.a_path
-            for item in commit.diff(
-                commit.parents[0] if commit.parents else git.NULL_TREE
-            )
-        ):
-            commits.append(
-                {
-                    "hash": commit.hexsha,
-                    "message": commit.message.strip(),
-                    "author": commit.author.name,
-                    "date": datetime.fromtimestamp(
-                        commit.committed_date, tz=pytz.UTC
-                    ),
-                    "files_changed": [
-                        item.a_path
-                        for item in commit.diff(
-                            commit.parents[0]
-                            if commit.parents
-                            else git.NULL_TREE
-                        )
-                    ],
-                }
-            )
-    return commits
+    # List of files we want to include
+    files_to_include = ["model_metadata.json", "parameters.h5", "train.py"]
 
+    for filename in files_to_include:
+        file_path = folder_path / filename
+        if file_path.exists():
+            with open(file_path, "rb") as f:
+                files.append((filename, f.read()))
 
-def create_interactive_timeline(commits):
-    """Create an interactive timeline visualization"""
-    # Create DataFrame for timeline
-    df = pd.DataFrame(commits)
-
-    # Create the timeline figure
-    fig = go.Figure()
-
-    # Add dots for each commit
-    fig.add_trace(
-        go.Scatter(
-            x=df["date"],
-            y=[0] * len(df),
-            mode="markers+text",
-            name="Commits",
-            text=df["message"],
-            textposition="top center",
-            hovertemplate=(
-                "<b>Date:</b> %{x}<br>"
-                "<b>Message:</b> %{text}<br>"
-                "<b>Author:</b> %{customdata[0]}<br>"
-                "<b>Hash:</b> %{customdata[1]}"
-            ),
-            customdata=list(
-                zip(df["author"], df["hash"].apply(lambda x: x[:8]))
-            ),
-            marker=dict(size=15, symbol="circle", color="blue"),
-        )
-    )
-
-    # Update layout
-    fig.update_layout(
-        title="Experiment Timeline",
-        showlegend=False,
-        yaxis=dict(visible=False),
-        xaxis=dict(title="Date"),
-        height=300,
-        hovermode="closest",
-    )
-
-    return fig, df
+    return files
 
 
 def main():
-    st.title("Git-Based Experiment Dashboard")
+    st.title("Model Training Timeline")
 
-    # Get ExperimentManager instance
-    exp_manager = get_experiment_manager()
+    experiments = load_experiment_metadata()
+    if not experiments:
+        st.warning("No experiments found.")
+        return
 
-    # Get commit history
-    commits = get_commit_history()
+    # Create DataFrame for timeline
+    df = pd.DataFrame(
+        [
+            {
+                "timestamp": exp["timestamp"],
+                "name": exp["name"],
+                "accuracy": exp["test_data"]["test_accuracy"],
+                "hyperparameters": exp["hyperparameters"],
+                "path": exp["path"],
+            }
+            for exp in experiments
+        ]
+    )
 
-    # Create interactive timeline
-    fig, commits_df = create_interactive_timeline(commits)
+    # Sort DataFrame by timestamp to ensure line connects points in chronological order
+    df = df.sort_values("timestamp")
+    df["timestamp"] = pd.to_datetime(df["timestamp"], format="%Y%m%d-%H%M%S")
 
-    # Display the timeline
+    # Create timeline
+    fig = go.Figure()
+
+    # Add points and lines
+    fig.add_trace(
+        go.Scatter(
+            x=df["timestamp"],
+            y=df["accuracy"],
+            mode="lines+markers",  # Changed to include both lines and markers
+            marker=dict(size=15),
+            line=dict(width=2),  # Added line width
+            name="Models",
+            hovertemplate=(
+                "<b>Model:</b> %{customdata[0]}<br>"
+                "<b>Time:</b> %{x}<br>"
+                "<b>Accuracy:</b> %{y:.3f}<br>"
+            ),
+            customdata=list(zip(df["name"])),
+        )
+    )
+
+    fig.update_layout(
+        title="Model Timeline",
+        xaxis_title="Training Time",
+        yaxis_title="Test Accuracy",
+        hovermode="closest",
+    )
+
+    # Display the plot
     st.plotly_chart(fig, use_container_width=True)
 
-    # Show selected commit details
-    if len(commits) > 0:
-        st.write("### Commit Details")
+    # Radio buttons for model selection
+    st.write("### Select Model for Details")
+    selected_model = st.radio(
+        "Select a model",
+        options=df["name"].tolist(),
+        format_func=lambda x: f"{x} (Accuracy: {df[df['name']==x]['accuracy'].iloc[0]:.3f})",
+        label_visibility="collapsed",
+    )
 
-        # Get selected date from timeline click or use latest commit
-        selected_point = st.session_state.get("selected_point", None)
-        if selected_point is not None:
-            selected_commit = commits_df.iloc[selected_point]
-        else:
-            selected_commit = commits_df.iloc[0]
+    # Show details if a model is selected
+    if selected_model:
+        exp = df[df["name"] == selected_model].iloc[0]
+        st.write("---")
+        st.subheader(f"Model Details: {exp['name']}")
+        col1, col2 = st.columns(2)
 
-        # Display commit info
-        col1, col2 = st.columns([2, 1])
         with col1:
-            st.write(
-                f"**Date:** {selected_commit['date'].strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-            st.write(f"**Message:** {selected_commit['message']}")
-            st.write(f"**Author:** {selected_commit['author']}")
-            st.write(f"**Commit:** {selected_commit['hash'][:8]}")
-            st.write("**Files Changed:**")
-            for file in selected_commit["files_changed"]:
-                if file.startswith("experiments/"):
-                    st.write(f"- {file}")
+            st.write("**Performance:**")
+            st.write(f"- Accuracy: {exp['accuracy']:.3f}")
+
+            # Add single folder download
+            exp_path = Path(exp["path"])
+            if exp_path.exists():
+                zip_data = create_zip_from_folder(exp_path)
+                st.download_button(
+                    label="💾 Save Model Folder",
+                    data=zip_data,
+                    file_name=f"{exp['name']}_files.zip",
+                    mime="application/zip",
+                    key=f"download_{exp['name']}",
+                )
 
         with col2:
-            if st.button(
-                f"Load Experiments at {selected_commit['hash'][:8]}",
-                key=selected_commit["hash"],
-            ):
-                try:
-                    # Checkout this commit temporarily
-                    current = exp_manager.repo.head.commit
-                    exp_manager.repo.git.checkout(selected_commit["hash"])
-
-                    # Load experiments from this commit
-                    experiments = exp_manager.load_all_experiments()
-
-                    # Store in session state
-                    st.session_state["experiments"] = experiments
-                    st.session_state["viewing_commit"] = selected_commit["hash"]
-
-                    # Return to current commit
-                    exp_manager.repo.git.checkout(current)
-
-                    st.success(
-                        f"Loaded experiments from commit {selected_commit['hash'][:8]}"
-                    )
-                except Exception as e:
-                    st.error(f"Error loading experiments: {str(e)}")
+            st.write("**Hyperparameters:**")
+            for key, value in exp["hyperparameters"].items():
+                st.write(f"- {key}: {value}")
 
 
 if __name__ == "__main__":
