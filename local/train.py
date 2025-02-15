@@ -9,6 +9,8 @@ from tensorflow.keras.layers import Conv2D, Flatten, Dense, Input
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.optimizers import Adam
 
+from tensorflow.keras.models import model_from_json
+
 
 # Load dataset
 (train_images, train_labels), (test_images, test_labels) = mnist.load_data()
@@ -30,23 +32,31 @@ def build_model(hyper_parameters):
 
         
     model_conv.compile(optimizer=Adam(learning_rate=hyper_parameters["learning_rate"]),
-                        loss='categorical_crossentropy',
-                        metrics=['accuracy'])
+        loss='categorical_crossentropy',
+        metrics=['accuracy'])
     return model_conv
+
+
+
 
 def train_model(hyper_parameters, model_conv):
 
     # Train model
     history = model_conv.fit(train_images, train_labels, epochs=hyper_parameters["epochs"], batch_size=hyper_parameters["batch_size"], validation_data=(test_images, test_labels))
-
-    test_loss, test_accuracy = model_conv.evaluate(test_images, test_labels)
-    print(f"Test Accuracy: {test_accuracy * 100:.2f}%")
     return {
         "train_loss": history.history["loss"],
         "train_accuracy": history.history["accuracy"],
         "val_loss": history.history["val_loss"],
         "val_accuracy": history.history["val_accuracy"],
+    }
+
+
+def test_model(model_conv):
+        
+    test_loss, test_accuracy = model_conv.evaluate(test_images, test_labels)
+    print(f"Test Accuracy: {test_accuracy * 100:.2f}%")
+
+    return {
         "test_loss": test_loss,
         "test_accuracy": test_accuracy
     }
-
