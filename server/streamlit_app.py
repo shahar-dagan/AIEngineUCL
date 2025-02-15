@@ -64,24 +64,26 @@ def main():
         ]
     )
 
+    # Sort DataFrame by timestamp to ensure line connects points in chronological order
+    df = df.sort_values("timestamp")
     df["timestamp"] = pd.to_datetime(df["timestamp"], format="%Y%m%d-%H%M%S")
 
     # Create timeline
     fig = go.Figure()
 
-    # Add points for each model
+    # Add points and lines
     fig.add_trace(
         go.Scatter(
             x=df["timestamp"],
             y=df["accuracy"],
-            mode="markers",
+            mode="lines+markers",  # Changed to include both lines and markers
             marker=dict(size=15),
+            line=dict(width=2),  # Added line width
             name="Models",
             hovertemplate=(
                 "<b>Model:</b> %{customdata[0]}<br>"
                 "<b>Time:</b> %{x}<br>"
                 "<b>Accuracy:</b> %{y:.3f}<br>"
-                "<b>Click for details</b>"
             ),
             customdata=list(zip(df["name"])),
         )
@@ -94,36 +96,44 @@ def main():
         hovermode="closest",
     )
 
-    # Display timeline and handle clicks
-    clicked = st.plotly_chart(fig, use_container_width=True)
+    # Display the plot
+    st.plotly_chart(fig, use_container_width=True)
 
-    # Add model selection dropdown
-    selected_model = st.selectbox(
-        "Select a model to view details",
+    # Radio buttons for model selection
+    st.write("### Select Model for Details")
+    selected_model = st.radio(
+        "Select a model",
         options=df["name"].tolist(),
         format_func=lambda x: f"{x} (Accuracy: {df[df['name']==x]['accuracy'].iloc[0]:.3f})",
+        label_visibility="collapsed",
     )
 
+    # Show details if a model is selected
     if selected_model:
         exp = df[df["name"] == selected_model].iloc[0]
+        st.write("---")
+        st.subheader(f"Model Details: {exp['name']}")
+        col1, col2 = st.columns(2)
 
-        # Show model details
-        st.subheader(f"Model: {exp['name']}")
-        st.write(f"**Accuracy:** {exp['accuracy']:.3f}")
-        st.write("**Hyperparameters:**")
-        for key, value in exp["hyperparameters"].items():
-            st.write(f"- {key}: {value}")
+        with col1:
+            st.write("**Performance:**")
+            st.write(f"- Accuracy: {exp['accuracy']:.3f}")
 
-        # Add download button
-        exp_path = Path(exp["path"])
-        if exp_path.exists():
-            zip_buffer = create_zip_from_folder(exp_path)
-            st.download_button(
-                label="📥 Download Model Files",
-                data=zip_buffer,
-                file_name=f"{exp['name']}.zip",
-                mime="application/zip",
-            )
+            # Add download button
+            exp_path = Path(exp["path"])
+            if exp_path.exists():
+                zip_buffer = create_zip_from_folder(exp_path)
+                st.download_button(
+                    label="📥 Download Model Files",
+                    data=zip_buffer,
+                    file_name=f"{exp['name']}.zip",
+                    mime="application/zip",
+                )
+
+        with col2:
+            st.write("**Hyperparameters:**")
+            for key, value in exp["hyperparameters"].items():
+                st.write(f"- {key}: {value}")
 
 
 if __name__ == "__main__":
