@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 import zipfile
 import io
+from openai import OpenAI
 
 # Constants
 MODEL_CACHE_DIR = Path("models")
@@ -65,6 +66,63 @@ def get_model_files(folder_path):
                 files.append((filename, f.read()))
 
     return files
+
+
+def get_historical_performance(experiments):
+    """Format historical data for AI analysis"""
+    history = []
+    for exp in experiments:
+        history.append(
+            {
+                "timestamp": exp["timestamp"],
+                "accuracy": exp["test_data"]["test_accuracy"],
+                "hyperparameters": exp["hyperparameters"],
+            }
+        )
+    return history
+
+
+def get_ai_suggestions(history):
+    """Get AI suggestions based on historical performance"""
+    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+
+    prompt = f"""
+    Based on these historical training results:
+    {json.dumps(history, indent=2)}
+    
+    Generate a single set of optimized hyperparameters in this exact JSON format:
+    {{
+        "learning_rate": 0.001,
+        "batch_size": 32,
+        "epochs": 10,
+        "kernel_size": [3, 3],
+        "conv_filters": 32,
+        "dense_layer_neurons": 128,
+        "activation": "relu"
+    }}
+    
+    Choose values that will likely improve model accuracy based on the historical performance.
+    Only output valid JSON, no other text.
+    """
+
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are an AI expert in machine learning hyperparameter optimization. Output only valid JSON.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.7,
+    )
+
+    # Parse the response to ensure valid JSON
+    try:
+        return json.loads(response.choices[0].message.content)
+    except Exception as e:
+        st.error(f"Error parsing AI suggestions: {str(e)}")
+        return None
 
 
 def main():
@@ -157,9 +215,32 @@ def main():
                 )
 
         with col2:
-            st.write("**Hyperparameters:**")
+            st.write("**Current Hyperparameters:**")
             for key, value in exp["hyperparameters"].items():
                 st.write(f"- {key}: {value}")
+
+        # Add AI Analysis section
+        st.write("---")
+        st.subheader("Suggested Hyperparameters")
+
+        try:
+            with st.spinner("Analyzing historical performance..."):
+                history = get_historical_performance(experiments)
+                suggested_params = get_ai_suggestions(history)
+                if suggested_params:
+                    # Display suggested parameters
+                    st.json(suggested_params)
+
+                    # Add download button for JSON
+                    json_str = json.dumps(suggested_params, indent=2)
+                    st.download_button(
+                        label="💾 Save Suggested Hyperparameters",
+                        data=json_str,
+                        file_name="suggested_hyperparameters.json",
+                        mime="application/json",
+                    )
+        except Exception as e:
+            st.error(f"Error generating AI suggestions: {str(e)}")
 
 
 if __name__ == "__main__":
