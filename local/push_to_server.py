@@ -23,11 +23,19 @@ def copy_folder(src, dst):
     shutil.copytree(src, dst)
     print(f"Copied '{src}' to '{dst}'")
 
-def push_model():
+def push_model(message):
 
-    with open("./model_cache/model_metadata.json") as file:
+
+
+    with open("./model_cache/model_metadata.json", "r") as file:
         file_data = json.load(file)
-        time_stamp = file_data["timestamp"]
+
+    time_stamp = file_data["timestamp"]
+    file_data["message"] = message
+
+
+    with open("./model_cache/model_metadata.json", "w") as file:
+        json.dump(file_data, file)
 
 
     copy_folder(
