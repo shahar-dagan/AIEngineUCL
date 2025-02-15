@@ -13,7 +13,8 @@ def save_model(model_conv, hyper_parameters, train_data, test_data):
 
     os.makedirs(save_dir, exist_ok=True)
 
-    shutil.copy("./train.py", os.path.join(save_dir, "./train.py"))
+    shutil.copy("./train.py", os.path.join(save_dir, "train.py"))
+    shutil.copy("./run_cache_model.py", os.path.join(save_dir, "run_cache_model.py"))
 
     # Save model parameters
     model_conv.save(os.path.join(save_dir, "parameters.h5"))

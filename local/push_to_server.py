@@ -28,11 +28,15 @@ def push_model():
     with open("./model_cache/model_metadata.json") as file:
         file_data = json.load(file)
         time_stamp = file_data["timestamp"]
-        copy_folder(
-            "./model_cache", 
-            f"./../server/models/model_{time_stamp}"
-        )
+
+
+    copy_folder(
+        "./model_cache", 
+        f"./../server/models/model_{time_stamp}"
+    )
+
+    # with open("")
     
 
 if __name__ == "__main__":
-    main()
+    push_model()

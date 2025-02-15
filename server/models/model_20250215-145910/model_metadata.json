@@ -1,0 +1,70 @@
+{
+    "hyperparameters": {
+        "learning_rate": 0.01,
+        "batch_size": 20,
+        "epochs": 10,
+        "kernel_size": [
+            5,
+            5
+        ],
+        "conv_filters": 5,
+        "dense_layer_neurons": 5,
+        "activation": "swish"
+    },
+    "model_architecture": "{\"module\": \"keras\", \"class_name\": \"Sequential\", \"config\": {\"name\": \"sequential_3\", \"trainable\": true, \"dtype\": {\"module\": \"keras\", \"class_name\": \"DTypePolicy\", \"config\": {\"name\": \"float32\"}, \"registered_name\": null}, \"layers\": [{\"module\": \"keras.layers\", \"class_name\": \"InputLayer\", \"config\": {\"batch_shape\": [null, 28, 28, 1], \"dtype\": \"float32\", \"sparse\": false, \"name\": \"input_layer_3\"}, \"registered_name\": null}, {\"module\": \"keras.layers\", \"class_name\": \"Conv2D\", \"config\": {\"name\": \"conv2d_3\", \"trainable\": true, \"dtype\": {\"module\": \"keras\", \"class_name\": \"DTypePolicy\", \"config\": {\"name\": \"float32\"}, \"registered_name\": null}, \"filters\": 5, \"kernel_size\": [5, 5], \"strides\": [1, 1], \"padding\": \"valid\", \"data_format\": \"channels_last\", \"dilation_rate\": [1, 1], \"groups\": 1, \"activation\": \"silu\", \"use_bias\": true, \"kernel_initializer\": {\"module\": \"keras.initializers\", \"class_name\": \"GlorotUniform\", \"config\": {\"seed\": null}, \"registered_name\": null}, \"bias_initializer\": {\"module\": \"keras.initializers\", \"class_name\": \"Zeros\", \"config\": {}, \"registered_name\": null}, \"kernel_regularizer\": null, \"bias_regularizer\": null, \"activity_regularizer\": null, \"kernel_constraint\": null, \"bias_constraint\": null}, \"registered_name\": null, \"build_config\": {\"input_shape\": [null, 28, 28, 1]}}, {\"module\": \"keras.layers\", \"class_name\": \"Flatten\", \"config\": {\"name\": \"flatten_3\", \"trainable\": true, \"dtype\": {\"module\": \"keras\", \"class_name\": \"DTypePolicy\", \"config\": {\"name\": \"float32\"}, \"registered_name\": null}, \"data_format\": \"channels_last\"}, \"registered_name\": null, \"build_config\": {\"input_shape\": [null, 24, 24, 5]}}, {\"module\": \"keras.layers\", \"class_name\": \"Dense\", \"config\": {\"name\": \"dense_6\", \"trainable\": true, \"dtype\": {\"module\": \"keras\", \"class_name\": \"DTypePolicy\", \"config\": {\"name\": \"float32\"}, \"registered_name\": null}, \"units\": 5, \"activation\": \"silu\", \"use_bias\": true, \"kernel_initializer\": {\"module\": \"keras.initializers\", \"class_name\": \"GlorotUniform\", \"config\": {\"seed\": null}, \"registered_name\": null}, \"bias_initializer\": {\"module\": \"keras.initializers\", \"class_name\": \"Zeros\", \"config\": {}, \"registered_name\": null}, \"kernel_regularizer\": null, \"bias_regularizer\": null, \"kernel_constraint\": null, \"bias_constraint\": null}, \"registered_name\": null, \"build_config\": {\"input_shape\": [null, 2880]}}, {\"module\": \"keras.layers\", \"class_name\": \"Dense\", \"config\": {\"name\": \"dense_7\", \"trainable\": true, \"dtype\": {\"module\": \"keras\", \"class_name\": \"DTypePolicy\", \"config\": {\"name\": \"float32\"}, \"registered_name\": null}, \"units\": 10, \"activation\": \"softmax\", \"use_bias\": true, \"kernel_initializer\": {\"module\": \"keras.initializers\", \"class_name\": \"GlorotUniform\", \"config\": {\"seed\": null}, \"registered_name\": null}, \"bias_initializer\": {\"module\": \"keras.initializers\", \"class_name\": \"Zeros\", \"config\": {}, \"registered_name\": null}, \"kernel_regularizer\": null, \"bias_regularizer\": null, \"kernel_constraint\": null, \"bias_constraint\": null}, \"registered_name\": null, \"build_config\": {\"input_shape\": [null, 5]}}], \"build_input_shape\": [null, 28, 28, 1]}, \"registered_name\": null, \"build_config\": {\"input_shape\": [null, 28, 28, 1]}, \"compile_config\": {\"loss\": \"categorical_crossentropy\", \"loss_weights\": null, \"metrics\": [\"accuracy\"], \"weighted_metrics\": null, \"run_eagerly\": false, \"steps_per_execution\": 1, \"jit_compile\": false}}",
+    "train_data": {
+        "train_loss": [
+            2.3033998012542725,
+            2.302773952484131,
+            2.302855968475342,
+            2.3030707836151123,
+            2.3029632568359375,
+            2.302767515182495,
+            2.302833080291748,
+            2.3027729988098145,
+            2.3029260635375977,
+            2.3026931285858154
+        ],
+        "train_accuracy": [
+            0.10838333517313004,
+            0.10783333331346512,
+            0.10819999873638153,
+            0.10903333127498627,
+            0.10750000178813934,
+            0.11068333685398102,
+            0.10956666618585587,
+            0.10891667008399963,
+            0.10711666941642761,
+            0.10854999721050262
+        ],
+        "val_loss": [
+            2.3037805557250977,
+            2.302929401397705,
+            2.3041625022888184,
+            2.30325984954834,
+            2.3021228313446045,
+            2.301976442337036,
+            2.3017160892486572,
+            2.3021187782287598,
+            2.3012516498565674,
+            2.3022260665893555
+        ],
+        "val_accuracy": [
+            0.10090000182390213,
+            0.11349999904632568,
+            0.11349999904632568,
+            0.11349999904632568,
+            0.11349999904632568,
+            0.11349999904632568,
+            0.11349999904632568,
+            0.11349999904632568,
+            0.11349999904632568,
+            0.11349999904632568
+        ]
+    },
+    "test_data": {
+        "test_loss": 2.3022263050079346,
+        "test_accuracy": 0.11349999904632568
+    },
+    "timestamp": "20250215-145910"
+}
