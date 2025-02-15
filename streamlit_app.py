@@ -1,9 +1,14 @@
 # streamlit_app.py
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 from experiment_manager import ExperimentManager
 from pydantic import BaseModel
 from typing import Optional
+import git
+from datetime import datetime
+import pytz
 
 
 # Create a single instance of ExperimentManager
@@ -19,104 +24,149 @@ class Experiment(BaseModel):
     notes: Optional[str] = None
 
 
+def get_commit_history():
+    """Get Git commit history for experiments"""
+    exp_manager = get_experiment_manager()
+    repo = exp_manager.repo
+
+    commits = []
+    for commit in repo.iter_commits():
+        # Only include commits that modified files in the experiments directory
+        if any(
+            "experiments/" in item.a_path
+            for item in commit.diff(
+                commit.parents[0] if commit.parents else git.NULL_TREE
+            )
+        ):
+            commits.append(
+                {
+                    "hash": commit.hexsha,
+                    "message": commit.message.strip(),
+                    "author": commit.author.name,
+                    "date": datetime.fromtimestamp(
+                        commit.committed_date, tz=pytz.UTC
+                    ),
+                    "files_changed": [
+                        item.a_path
+                        for item in commit.diff(
+                            commit.parents[0]
+                            if commit.parents
+                            else git.NULL_TREE
+                        )
+                    ],
+                }
+            )
+    return commits
+
+
+def create_interactive_timeline(commits):
+    """Create an interactive timeline visualization"""
+    # Create DataFrame for timeline
+    df = pd.DataFrame(commits)
+
+    # Create the timeline figure
+    fig = go.Figure()
+
+    # Add dots for each commit
+    fig.add_trace(
+        go.Scatter(
+            x=df["date"],
+            y=[0] * len(df),
+            mode="markers+text",
+            name="Commits",
+            text=df["message"],
+            textposition="top center",
+            hovertemplate=(
+                "<b>Date:</b> %{x}<br>"
+                "<b>Message:</b> %{text}<br>"
+                "<b>Author:</b> %{customdata[0]}<br>"
+                "<b>Hash:</b> %{customdata[1]}"
+            ),
+            customdata=list(
+                zip(df["author"], df["hash"].apply(lambda x: x[:8]))
+            ),
+            marker=dict(size=15, symbol="circle", color="blue"),
+        )
+    )
+
+    # Update layout
+    fig.update_layout(
+        title="Experiment Timeline",
+        showlegend=False,
+        yaxis=dict(visible=False),
+        xaxis=dict(title="Date"),
+        height=300,
+        hovermode="closest",
+    )
+
+    return fig, df
+
+
 def main():
     st.title("Git-Based Experiment Dashboard")
 
     # Get ExperimentManager instance
     exp_manager = get_experiment_manager()
 
-    # Create tabs for viewing vs logging
-    tab1, tab2 = st.tabs(["View Experiments", "Log New Experiment"])
+    # Get commit history
+    commits = get_commit_history()
 
-    with tab1:
-        if st.button("Refresh Experiments"):
-            st.session_state["experiments"] = exp_manager.load_all_experiments()
+    # Create interactive timeline
+    fig, commits_df = create_interactive_timeline(commits)
 
-        # Initialize experiments in session state if not present
-        if "experiments" not in st.session_state:
-            st.session_state["experiments"] = exp_manager.load_all_experiments()
+    # Display the timeline
+    st.plotly_chart(fig, use_container_width=True)
 
-        exp_list = st.session_state["experiments"]
-        if exp_list:
-            df = pd.json_normalize(exp_list)
+    # Show selected commit details
+    if len(commits) > 0:
+        st.write("### Commit Details")
 
-            # Add filtering options
-            st.write("### Filters")
-            col1, col2 = st.columns(2)
-            with col1:
-                min_accuracy = st.slider("Min Accuracy", 0.0, 1.0, 0.0)
-            with col2:
-                max_loss = st.slider("Max Loss", 0.0, 10.0, 10.0)
+        # Get selected date from timeline click or use latest commit
+        selected_point = st.session_state.get("selected_point", None)
+        if selected_point is not None:
+            selected_commit = commits_df.iloc[selected_point]
+        else:
+            selected_commit = commits_df.iloc[0]
 
-            # Apply filters
-            filtered_df = df[
-                (df["metrics.accuracy"] >= min_accuracy)
-                & (df["metrics.loss"] <= max_loss)
-            ]
-
-            st.write("### Experiment List")
-            st.dataframe(filtered_df)
-
-            # Experiment details
-            st.write("### Experiment Details")
-            selected_index = st.selectbox(
-                "Select an experiment to inspect", range(len(exp_list))
+        # Display commit info
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.write(
+                f"**Date:** {selected_commit['date'].strftime('%Y-%m-%d %H:%M:%S')}"
             )
-            selected_exp = exp_list[selected_index]
-            st.json(selected_exp)
+            st.write(f"**Message:** {selected_commit['message']}")
+            st.write(f"**Author:** {selected_commit['author']}")
+            st.write(f"**Commit:** {selected_commit['hash'][:8]}")
+            st.write("**Files Changed:**")
+            for file in selected_commit["files_changed"]:
+                if file.startswith("experiments/"):
+                    st.write(f"- {file}")
 
-            # Visualizations
-            if "metrics" in selected_exp:
-                st.write("### Metrics Visualization")
-                metrics_df = pd.DataFrame([exp["metrics"] for exp in exp_list])
-                metrics_df.index = [exp["name"] for exp in exp_list]
-                st.line_chart(metrics_df)
+        with col2:
+            if st.button(
+                f"Load Experiments at {selected_commit['hash'][:8]}",
+                key=selected_commit["hash"],
+            ):
+                try:
+                    # Checkout this commit temporarily
+                    current = exp_manager.repo.head.commit
+                    exp_manager.repo.git.checkout(selected_commit["hash"])
 
-    with tab2:
-        st.write("### Log New Experiment")
-        exp_name = st.text_input("Experiment Name")
+                    # Load experiments from this commit
+                    experiments = exp_manager.load_all_experiments()
 
-        # Hyperparameters input
-        st.write("#### Hyperparameters")
-        lr = st.number_input(
-            "Learning Rate", min_value=0.0001, max_value=1.0, value=0.001
-        )
-        batch_size = st.number_input(
-            "Batch Size", min_value=1, max_value=512, value=32
-        )
+                    # Store in session state
+                    st.session_state["experiments"] = experiments
+                    st.session_state["viewing_commit"] = selected_commit["hash"]
 
-        # Metrics input
-        st.write("#### Metrics")
-        accuracy = st.number_input(
-            "Accuracy", min_value=0.0, max_value=1.0, value=0.0
-        )
-        loss = st.number_input("Loss", min_value=0.0, value=0.0)
+                    # Return to current commit
+                    exp_manager.repo.git.checkout(current)
 
-        notes = st.text_area("Notes")
-
-        if st.button("Log Experiment"):
-            try:
-                experiment_data = {
-                    "name": exp_name,
-                    "hyperparams": {"lr": lr, "batch_size": batch_size},
-                    "metrics": {"accuracy": accuracy, "loss": loss},
-                    "notes": notes,
-                }
-
-                # Validate with Pydantic
-                exp = Experiment(**experiment_data)
-
-                # Save experiment
-                exp_manager.save_experiment(exp.dict())
-
-                # Update session state
-                st.session_state["experiments"] = (
-                    exp_manager.load_all_experiments()
-                )
-                st.success("Experiment logged successfully!")
-
-            except Exception as e:
-                st.error(f"Error logging experiment: {str(e)}")
+                    st.success(
+                        f"Loaded experiments from commit {selected_commit['hash'][:8]}"
+                    )
+                except Exception as e:
+                    st.error(f"Error loading experiments: {str(e)}")
 
 
 if __name__ == "__main__":
