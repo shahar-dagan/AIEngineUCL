@@ -100,22 +100,25 @@ def get_ai_suggestions(history):
     client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
     prompt = f"""
-    Based on these historical training results:
+    You are an ML hyperparameter optimization expert. Based on these historical results:
     {json.dumps(history, indent=2)}
+
+    Predict the optimal hyperparameter values that would achieve the best accuracy.
+    Consider the trends in historical performance, but predict NEW optimized values.
     
-    Generate a single set of optimized hyperparameters in this exact JSON format:
+    Respond with ONLY a JSON object in this structure:
     {{
-        "learning_rate": 0.001,
-        "batch_size": 32,
-        "epochs": 10,
-        "kernel_size": [3, 3],
-        "conv_filters": 32,
-        "dense_layer_neurons": 128,
-        "activation": "relu"
+        "learning_rate": (predict optimal value),
+        "batch_size": (predict optimal value),
+        "epochs": (predict optimal value),
+        "kernel_size": (predict optimal value as [x, x]),
+        "conv_filters": (predict optimal value),
+        "dense_layer_neurons": (predict optimal value),
+        "activation": (predict optimal value)
     }}
-    
-    Choose values that will likely improve model accuracy based on the historical performance.
-    Only output valid JSON, no other text.
+
+    Use numerical values except for activation which should be a string.
+    Do not include any explanation, only the JSON object.
     """
 
     response = client.chat.completions.create(
@@ -123,16 +126,19 @@ def get_ai_suggestions(history):
         messages=[
             {
                 "role": "system",
-                "content": "You are an AI expert in machine learning hyperparameter optimization. Output only valid JSON.",
+                "content": "You are a predictive ML optimization expert. Output only valid JSON with predicted optimal values.",
             },
             {"role": "user", "content": prompt},
         ],
         temperature=0.7,
     )
 
-    # Parse the response to ensure valid JSON
     try:
-        return json.loads(response.choices[0].message.content)
+        # Extract just the JSON part from the response
+        content = response.choices[0].message.content.strip()
+        # Remove any markdown code block markers if present
+        content = content.replace("```json", "").replace("```", "").strip()
+        return json.loads(content)
     except Exception as e:
         st.error(f"Error parsing AI suggestions: {str(e)}")
         return None
@@ -155,6 +161,7 @@ def main():
                 "accuracy": exp["test_data"]["test_accuracy"],
                 "hyperparameters": exp["hyperparameters"],
                 "path": exp["path"],
+                "message": exp["message"],
             }
             for exp in experiments
         ]
@@ -172,16 +179,17 @@ def main():
         go.Scatter(
             x=df["timestamp"],
             y=df["accuracy"],
-            mode="lines+markers",  # Changed to include both lines and markers
+            mode="lines+markers",
             marker=dict(size=15),
-            line=dict(width=2),  # Added line width
+            line=dict(width=2),
             name="Models",
             hovertemplate=(
                 "<b>Model:</b> %{customdata[0]}<br>"
                 "<b>Time:</b> %{x}<br>"
                 "<b>Accuracy:</b> %{y:.3f}<br>"
+                "<b>Message:</b> %{customdata[1]}<br>"
             ),
-            customdata=list(zip(df["name"])),
+            customdata=list(zip(df["name"], df["message"])),
         )
     )
 
@@ -209,6 +217,10 @@ def main():
         exp = df[df["name"] == selected_model].iloc[0]
         st.write("---")
         st.subheader(f"Model Details: {exp['name']}")
+
+        # Add message display
+        st.write(f"**Message:** {exp['message']}")
+
         col1, col2 = st.columns(2)
 
         with col1:
