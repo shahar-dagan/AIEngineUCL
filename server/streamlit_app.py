@@ -6,6 +6,7 @@ import json
 import zipfile
 import io
 from openai import OpenAI
+import tempfile
 
 # Constants
 MODEL_CACHE_DIR = Path("models")
@@ -274,22 +275,28 @@ def main():
                     # Display suggested parameters
                     st.json(suggested_params)
 
-                    # Save to temporary file
-                    temp_file = Path("/tmp/suggested_hyperparameters.json")
-                    with open(temp_file, "w") as f:
-                        json.dump(suggested_params, f, indent=2)
+                    # Create temporary file using tempfile
+                    with tempfile.NamedTemporaryFile(
+                        mode="w", delete=False, suffix=".json"
+                    ) as tmp_file:
+                        json.dump(suggested_params, tmp_file, indent=2)
+                        tmp_file_path = tmp_file.name
 
-                    # Read file for download
-                    with open(temp_file, "rb") as f:
-                        st.download_button(
-                            label="💾 Save Suggested Hyperparameters",
-                            data=f.read(),
-                            file_name="suggested_hyperparameters.json",
-                            mime="application/json",
-                        )
-
-                    # Clean up
-                    temp_file.unlink()
+                    try:
+                        # Read file for download
+                        with open(tmp_file_path, "rb") as f:
+                            st.download_button(
+                                label="💾 Save Suggested Hyperparameters",
+                                data=f.read(),
+                                file_name="suggested_hyperparameters.json",
+                                mime="application/json",
+                            )
+                    finally:
+                        # Clean up
+                        try:
+                            Path(tmp_file_path).unlink()
+                        except:
+                            pass  # Ignore cleanup errors
         except Exception as e:
             st.error(f"Error generating AI suggestions: {str(e)}")
 
