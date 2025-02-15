@@ -43,6 +43,7 @@ def create_zip_from_folder(folder_path):
                 "model_metadata.json",
                 "parameters.h5",
                 "train.py",
+                "run_cache_model.py",
             ]
 
             for filename in files_to_include:
@@ -50,6 +51,11 @@ def create_zip_from_folder(folder_path):
                 if file_path.exists():
                     # Add file to zip with its relative path
                     zf.write(file_path, filename)
+                elif filename == "run_cache_model.py":
+                    # Copy run_cache_model.py from local directory if it doesn't exist in model folder
+                    source_path = Path("local/run_cache_model.py")
+                    if source_path.exists():
+                        zf.write(source_path, filename)
 
         # Read the created zip file
         with open(output_path, "rb") as f:
@@ -64,7 +70,12 @@ def create_zip_from_folder(folder_path):
 def get_model_files(folder_path):
     """Get model files for download"""
     folder_path = Path(folder_path)
-    files_to_include = ["model_metadata.json", "parameters.h5", "train.py"]
+    files_to_include = [
+        "model_metadata.json",
+        "parameters.h5",
+        "train.py",
+        "run_cache_model.py",
+    ]
 
     # Create a zip file in memory
     zip_buffer = io.BytesIO()
@@ -76,6 +87,12 @@ def get_model_files(folder_path):
                 # Read file in binary mode
                 with open(file_path, "rb") as f:
                     zip_file.writestr(filename, f.read())
+            elif filename == "run_cache_model.py":
+                # Include run_cache_model.py from local directory if it doesn't exist in model folder
+                source_path = Path("local/run_cache_model.py")
+                if source_path.exists():
+                    with open(source_path, "rb") as f:
+                        zip_file.writestr(filename, f.read())
 
     zip_buffer.seek(0)
     return zip_buffer.read()
